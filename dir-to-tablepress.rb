@@ -1,0 +1,182 @@
+#!/usr/bin/env ruby
+####
+# Copyright 2017 John Messenger
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+####
+
+require 'rubygems'
+require 'date'
+require 'json'
+require 'logger'
+require 'mechanize'
+require 'nokogiri'
+require 'open-uri'
+require 'rest-client'
+require 'slop'
+require 'yaml'
+
+
+class String
+  def casecmp?(other)
+    self.casecmp(other).zero?
+  end
+end
+
+####
+# Look up a filename in the web-based filename database and return its description
+####
+# @param [String] db_url
+# @param [Array] db_creds
+# @param [String] filename
+def query_db(db_url, db_creds, filename)
+  uri = URI.parse(db_url)
+  uri = URI::HTTP.build(host: uri.host, path: uri.path, query: "filename=#{filename}")
+  page = open(uri, http_basic_authentication: db_creds) { |f| f.read }
+  pagedoc = Nokogiri::XML(page)
+  pagedoc.css('description').text
+end
+
+####
+# Retrieve a directory listing from a web server and parse it to extract filenames and dates.  Optionally query a
+# web-based database to retrieve a textual description of the file.
+####
+# @param [String] dir_url    URL of the directory to scan
+# @param [Array<String>] arch_creds  Username and password required to authenticate access to the directory
+# @param [String] db_url     URL of the database in which to look up the file's description
+# @param [Array] db_creds    Username and password required to authenticate access to the database
+# @param [String] prefix     A prefix to prepend to the filename in recursive invocations
+# @param [Bool] lookup       Should the filename be looked up in the web database?
+def parse_dir(dir_url, arch_creds, db_url, db_creds, prefix: '', lookup: false)
+  page = open(dir_url, http_basic_authentication: arch_creds) { |f| f.read }
+  pagedoc = Nokogiri::HTML(page)
+  files = []
+  found_parent = false
+  pagedoc.at('pre').children.each do |el|
+    unless found_parent
+      found_parent = /Parent Directory/.match(el.text) unless found_parent
+      next unless found_parent
+    end
+    next unless found_parent
+    next if /Parent Directory/.match(el.text)
+    puts el.text if $DEBUG
+    if el.name == 'a'
+      if /\/$/.match(el.text)
+        puts "Directory #{el['href']}" if $DEBUG
+        files += parse_dir(dir_url + el['href'], arch_creds, db_url, db_creds, prefix: el.text, lookup: lookup)
+      else
+        puts "It's a file #{el['href']} with prefix #{prefix}" if $DEBUG
+        name = el.text
+        file = { name: prefix + name,
+                 href: dir_url + el['href'],
+                 date: DateTime.parse(el.next) }
+        file[:desc] = query_db(db_url, db_creds, name) if lookup
+        files << file
+      end
+    end
+  end
+  return files
+end
+
+#
+# Main program
+#
+begin
+  opts = Slop.parse do |o|
+    o.banner = 'usage: dir-to-tablepress.rb [options] URL-of-directory'
+    o.string '-s', '--secrets', 'secrets YAML file name', default: 'secrets.yml'
+    o.bool   '-d', '--debug', 'debug mode'
+    o.bool   '-u', '--update', 'update an existing table'
+    o.bool   '-l', '--lookup', 'look up filenames in the web database'
+    o.string '-o', '--outfile', 'output filename'
+    o.on '--help' do
+      STDERR.puts o
+      exit
+    end
+  end
+
+  # The first argument to the script is the URL of the directory to convert.
+  if opts.args.count == 1
+    arch_url = opts.args[0]
+  else
+    STDERR.puts opts
+    exit
+  end
+
+  config = YAML.load(File.read(opts[:secrets]))
+  $stdout.reopen(opts[:outfile]) if opts[:outfile]
+
+  # Set up logging (which is not used)
+  $DEBUG = opts.debug?
+  $logger = Logger.new(STDERR)
+  $logger.level = Logger::INFO
+  $logger.level = Logger::DEBUG if $DEBUG
+
+  # When debugging, use a proxy on localhost to allow Charles Proxy to see the interactions
+  if $DEBUG
+    RestClient.proxy = "http://localhost:8888"
+    $logger.debug("Using HTTP proxy #{RestClient.proxy}")
+  end
+
+  arch_creds = [config['username'], config['password']]
+  db_creds = [config['db_user'], config['db_password']]
+
+  # Retrieve and parse the directory into an array of file details.
+  files = parse_dir(arch_url, arch_creds, config['db_uri'], db_creds, lookup: opts[:lookup])
+
+  if $DEBUG
+    files.each do |f|
+      puts "#{f[:date]} #{f[:name]} #{f[:href]} #{f[:desc]}"
+    end
+  end
+
+  # Build a TablePress table specification which will be output as a JSON object for import into Wordpress.
+  table = {
+      name: 'Archive',
+      description: "Archive of files for #{File.split(arch_url)[-1]}, generated by dir-to-tablepress.rb at #{Time.now}",
+      options: {
+          table_head: true,
+          table_foot: false,
+          alternating_row_colors: true,
+          row_hover: true,
+          print_name: true,
+          print_name_position: 'above',
+          print_description: false,
+          print_description_position: 'below',
+          extra_css_classes: '',
+          use_datatables: true,
+          datatables_sort: true,
+          datatables_filter: true,
+          datatables_paginate: true,
+          datatables_lengthchange: true,
+          datatables_paginate_entries: 10,
+          datatables_info: true,
+          datatables_scrollx: false,
+          datatables_custom_commands: '"order": [[ 0, \'desc\' ]], "columnDefs": [ { "type": "date", "targets": [ 0 ] } ]'
+      }
+  }
+
+  # Add table headers
+  table[:data] = opts[:lookup] ? [ %w[Date Document Description] ] : [ %w[Date Document] ]
+
+  files.each do |f|
+    builder = Nokogiri::XML::Builder.new do |xml|
+      xml.a(File.split(f[:name])[-1], href: f[:href])
+    end
+    link = builder.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::NO_DECLARATION)
+    entry = [f[:date].to_date.to_s, link]
+    entry << f[:desc] if opts[:lookup]
+    table[:data] << entry
+  end
+  puts JSON.pretty_generate(table)
+end

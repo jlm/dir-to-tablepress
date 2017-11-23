@@ -17,15 +17,10 @@
 
 require 'rubygems'
 require 'date'
-require 'json'
 require 'logger'
-require 'mechanize'
-require 'nokogiri'
-require 'open-uri'
 require 'rest-client'
 require 'slop'
 require 'yaml'
-# puts $LOAD_PATH
 require './tptable'
 
 #

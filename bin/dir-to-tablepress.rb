@@ -21,7 +21,7 @@ require 'logger'
 require 'rest-client'
 require 'slop'
 require 'yaml'
-require './tptable'
+require 'dirtp'
 
 #
 # Main program

@@ -1,5 +1,5 @@
-TablePress maker for Web directories
-==============
+# Dirtp: TablePress maker for Web directories
+
 
 This Ruby script queries a website that offers directory listings, and converts them into TablePress tables
 for inclusion into a Wordpress website.  The first column is the date and the second column is a link to the
@@ -9,14 +9,30 @@ is only reflected by including the directory names in the links.
 Optionally, each filename can be looked up in a separate web-based database to retrieve a description of each
 file, which is then included in a third column in the generated table.
 
-Configuration
--------------
-The URL of the web-based filename lookup API, together with the usernames
-and passwords for it and for the directory to be parsed, are stored in `secrets.yml` which is not included
-in the sources.  An example of that file file is available as `example-secrets.yml`.
+## Usage
 
-Command-Line Options
---------------------
+Check the `bin/dir-to-tablepress.rb` script for an example of using this gem.
+
+## Installation
+
+Add this line to your application's Gemfile:
+
+```ruby
+gem 'dirtp'
+```
+
+And then execute:
+
+    $ bundle
+
+Or install it yourself as:
+
+    $ gem install dirtp
+
+## Command-Line Options
+This gem comes with a commend-line utility which demonstrates its use and can be used
+to generate Tablepress JSON tables.
+
 Without any options, the script prints a usage message and exits.  The mandatory first argument us the URL of the
 directory to parse.  
 * `--lookup`  (abbreviated `-l`): Look up each filename in a web-based database and include the resulting description
@@ -34,33 +50,23 @@ directory to parse.
 * `--debug`  (abbreviated `-d`): print additional debugging information to STDERR and use a localhost proxy on port
   8888 to allow web traffic to be inspected.
 
-Usage
------
-This script was developed to allow lists of files to be shown in a Wordpress website.  The idea is to periodically
+### Configuration
+The URL of the web-based filename lookup API, together with the usernames
+and passwords for it and for the directory to be parsed, are stored in `secrets.yml` which is not included
+in the sources.  An example of that file file is available as `example-secrets.yml`.
+
+### Usage
+The example script was developed to allow lists of files to be shown in a Wordpress website.  The idea is to periodically
 recreate or update the table either via `wp-cron` or by manipulating the Wordpress API.  The output format is
 compatible with TablePress' import format.
 
-Deployment
-----------
 
-TBA.
+## Development
 
-License
--------
-Copyright 2017 John Messenger
+After checking out the repo, run `bin/setup` to install dependencies. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
 
-http://www.apache.org/licenses/LICENSE-2.0
+## Contributing
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-Author
-------
-John Messenger, ADVA Optical Networking Ltd., Vice-chair, 802.1
+Bug reports and pull requests are welcome on GitHub at https://github.com/jlm/dir-to-tablepress.
